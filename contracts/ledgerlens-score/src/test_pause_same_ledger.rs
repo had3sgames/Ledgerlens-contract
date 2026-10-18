@@ -53,7 +53,18 @@ impl<'a> Fx<'a> {
         self.c.set_pair_paused(&self.pair, &on);
     }
     fn submit(&self, w: &Address, pair: &Symbol) -> Result<(), Error> {
-        match self.c.try_submit_score(&self.none(), w, pair, &50, &false, &false, &TS, &90, &1, &None) {
+        match self.c.try_submit_score(
+            &self.none(),
+            w,
+            pair,
+            &50,
+            &false,
+            &false,
+            &TS,
+            &90,
+            &1,
+            &None,
+        ) {
             Ok(Ok(())) => Ok(()),
             Err(Ok(e)) => Err(e),
             other => panic!("unexpected host failure: {}", other.is_ok()),

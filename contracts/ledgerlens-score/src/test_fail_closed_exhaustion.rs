@@ -27,7 +27,18 @@ fn setup<'a>() -> (Env, LedgerLensScoreContractClient<'a>, Address) {
     let c = LedgerLensScoreContractClient::new(&env, &id);
     c.initialize(&Address::generate(&env), &Address::generate(&env));
     let w = Address::generate(&env);
-    c.submit_score(&Vec::new(&env), &w, &symbol_short!("XLM_USDC"), &10, &false, &false, &TS, &90, &1, &None);
+    c.submit_score(
+        &Vec::new(&env),
+        &w,
+        &symbol_short!("XLM_USDC"),
+        &10,
+        &false,
+        &false,
+        &TS,
+        &90,
+        &1,
+        &None,
+    );
     (env, c, w)
 }
 

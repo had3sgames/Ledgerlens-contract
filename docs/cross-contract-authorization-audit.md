@@ -45,3 +45,22 @@ unauthenticated initialization. Each initializer adds exactly one host
 authorization check, executes once per contract instance, and adds no
 iteration or storage growth. Cross-shard work remains capped at ten shards and
 all existing batch/index/history bounds remain unchanged.
+
+## Depth headroom policy (#1388)
+
+The host aborts a call stack deeper than `DEFAULT_HOST_DEPTH_LIMIT` = 100
+frames (soroban-env-host 21.x). Policy: every chain stays at or below
+`MAX_CHAIN_DEPTH` = 10 frames (90% headroom). Internal helpers inside one
+contract add no frames. Guard: `tests/composability/tests/auth_depth_headroom.rs`.
+
+| Chain | Frames | Limit | Composed |
+|---|---|---|---|
+| account -> score (any public entry point) | 1 | 100 | no |
+| consumer -> score (gate / reads) | 2 | 100 | no |
+| mock-amm / mock-lending -> score gate | 2 | 100 | yes |
+| aggregator -> score shard fan-out | 2 | 100 | no |
+| consumer -> aggregator -> score shard | 3 | 100 | yes |
+| consumer -> mock-amm -> score (#716) | 3 | 100 | yes |
+
+Contributors adding a cross-contract call must add or update the chain in
+`CHAINS` and this table; the test fails if a chain exceeds the margin.
