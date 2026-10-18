@@ -240,6 +240,8 @@ mod test_absent_vs_cleared;
 #[cfg(test)]
 mod test_pause_same_ledger;
 #[cfg(test)]
+mod test_fail_closed_exhaustion;
+#[cfg(test)]
 mod test_gdpr_accumulator;
 
 #[cfg(test)]

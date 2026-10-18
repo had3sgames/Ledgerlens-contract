@@ -402,6 +402,13 @@ below are stable** — integrators may match on the numeric code:
   allow-list unknown wallets, you must make that decision explicitly in your
   own contract; do not assume `query_risk_gate` will ever return `true` for a
   wallet LedgerLens has never seen.
+- **Scope of the fail-closed guarantee (#1391).** "Fail closed" covers logical
+  denial (missing, stale, malformed, or low-confidence data returns `false`).
+  Under host resource exhaustion (CPU, memory, or footprint) the host aborts the
+  whole invocation: no value is returned, so no gate can yield `true`, and no
+  state is written. Callers see a failed cross-contract call and MUST treat it
+  as deny. Verified by `test_fail_closed_exhaustion` for `query_risk_gate`,
+  `query_risk_gate_with_confidence`, and `query_risk_gate_relative`.
 - **Low-confidence scores are epistemically equivalent to "unknown".** A score
   of `score=30, confidence=5` carries almost no information — the model had
   too little data to make any meaningful determination. Treating it as evidence
