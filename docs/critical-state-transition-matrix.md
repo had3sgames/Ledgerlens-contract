@@ -20,6 +20,7 @@ coverage is not yet automated.
 | Admin transfer | Current admin nominates; nominated address authorizes acceptance | Pending admin becomes current and pending slot is cleared | No pending transfer errors; cancellation preserves old admin; overwrite is explicit | `test_admin_transfer::*` |
 | Global pause | Initialized; admin quorum authorizes | `pause` sets global flag; `unpause` clears it | Writes fail with `ContractPaused`; reads remain available; repeated state assignments do not grow storage | `test_chaos_pause::*`, `test_is_paused::*`, `tests/composability/tests/integration_lifecycle.rs::test_paused_state_blocks_submission` |
 | Pair pause | Initialized; admin authorizes | Only the selected pair is frozen and bounded index is updated | Duplicate pause is idempotent; index is capped; unrelated pairs and reads remain available | `test_pair_pause::*` |
+| Global pause x pair breaker (same ledger) | Both transitions land in one ledger, any order | Flags are independent; final state is order-independent; neither transition touches the other flag | A write needs BOTH clear. Global pause is evaluated first: single submit and batch fail whole-call with `ContractPaused`; with only the breaker, a batch rejects just that pair's entries. Governance (`unpause`, `set_pair_paused`) stays reachable while paused; reads stay open; risk gate fails closed under global pause only | `test_pause_same_ledger::*`, `test_chaos_pause::*` |
 | Upgrade | Admin quorum proposes one hash; ledger time reaches committed deadline | Proposal is stored, executable only at/after deadline, then cleared on execute or veto | Missing proposal, duplicate proposal, early execution, invalid delay, service-only authority, and insufficient admin quorum reject | `test_upgrade::*`, `test_upgrade_multisig::*`, `upgrade_smoke::*` |
 | Deletion | Initialized; admin quorum authorizes | `clear_score` removes live score; `clear_score_history` removes history; each emits an audit event | Missing entries are idempotent; clearing one representation or pair does not erase another | `test_clear_score_*`, `test_clear_score_history_*`, `test_gdpr_accumulator::*`, `test_histogram::*` |
 | Direct query | Any caller/contract | Existing, non-embargoed data is returned without mutation | Unknown/embargoed data returns the documented error/absence; risk gates fail closed | `test_query_helpers::*`, `test_confidence_gate::*`, `test_gate_enforcement::*`, `test_embargo::*` |
@@ -68,3 +69,17 @@ for this change because the requested delivery explicitly excludes test runs.
   `MAX_BATCH_SIZE`, `BATCH_READ_MAX`, `MAX_ASSET_PAIR_BYTES = 9`,
   `MAX_SCORE_COMMITMENT_BYTES = 32`, bounded dispute replay inputs, bounded
   per-pair history, and `MAX_SHARDS = 10`.
+
+## Global pause x pair breaker in the same ledger (#1395)
+
+Design decision: precedence is deterministic and order-independent. The global
+pause and the per-pair breaker are separate flags; `unpause` never clears a
+breaker and clearing a breaker never unpauses. Global pause decides the shape of
+a failure (whole-call `ContractPaused`), the breaker only rejects its own pair.
+Soroban serialises transactions within a ledger, so every ordering is covered by
+`test_pause_same_ledger`.
+
+TLA+ (`spec/LedgerLens.tla`): not extended. The model already abstracts to one
+canonical pair and has no pair-breaker variable; since the flags are independent
+and ledger-atomic, the same-ledger case reduces to the covered pause/no-pause
+transitions and is verified at the Rust level instead.
