@@ -226,13 +226,13 @@ fn consumer_read_quota_refill_boundary_and_partial_refill() {
 
     assert!(!metered_query(&s, &consumer, &wallet));
     assert!(!metered_query(&s, &consumer, &wallet));
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 0);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 0);
 
     let start = s.env.ledger().timestamp();
     s.env.ledger().with_mut(|l| l.timestamp = start + 1);
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 1);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 1);
     s.env.ledger().with_mut(|l| l.timestamp = start + 2);
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 2);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 2);
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn consumer_read_quota_saturates_for_huge_elapsed_time() {
     }
 
     s.env.ledger().with_mut(|l| l.timestamp = u64::MAX);
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 3);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 3);
 }
 
 #[test]
@@ -257,7 +257,7 @@ fn consumer_read_quota_exhaustion_fails_closed() {
     configure_quota(&s.env, &s.client, &consumer, 1, 0);
 
     assert!(!metered_query(&s, &consumer, &wallet));
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 0);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 0);
     assert!(!metered_query(&s, &consumer, &wallet));
 }
 
@@ -323,13 +323,13 @@ fn consumer_quota_checks_allowlist_before_consuming_tokens() {
     s.client.set_gate_enforcement_mode(&Vec::new(&s.env), &true);
 
     assert!(!metered_query(&s, &consumer, &wallet));
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 1);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 1);
 
     let mut callers = Vec::new(&s.env);
     callers.push_back(consumer.clone());
     s.client.set_gate_callers(&Vec::new(&s.env), &callers);
     assert!(metered_query(&s, &consumer, &wallet));
-    assert_eq!(s.client.get_consumer_read_quota_remaining(&consumer), 0);
+    assert_eq!(s.client.get_consumer_quota_remaining(&consumer), 0);
 }
 
 #[test]

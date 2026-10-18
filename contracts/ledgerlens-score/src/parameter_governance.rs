@@ -1,6 +1,6 @@
 //! Validation and application logic for time-locked parameter change proposals.
 
-use soroban_sdk::{symbol_short, Bytes, Env, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Bytes, Env, Symbol};
 
 use crate::constants;
 use crate::errors::Error;
@@ -41,7 +41,8 @@ pub fn param_key_staleness_window() -> Symbol {
 /// Hard bounds for a single governed parameter. `min`/`max` are inclusive.
 /// The registry is a compile-time constant table: it can only be changed by
 /// upgrading the contract, never by runtime governance.
-#[derive(Clone, Copy)]
+#[contracttype]
+#[derive(Clone)]
 pub struct ParamBounds {
     pub key: Symbol,
     pub min: u64,
@@ -69,11 +70,7 @@ pub fn bounds_registry(env: &Env) -> soroban_sdk::Vec<ParamBounds> {
         min: 0,
         max: constants::MAX_DECAY_LAMBDA_NUM as u64,
     });
-    table.push_back(ParamBounds {
-        key: param_key_velocity_cap(),
-        min: 0,
-        max: u32::MAX as u64,
-    });
+    table.push_back(ParamBounds { key: param_key_velocity_cap(), min: 0, max: u32::MAX as u64 });
     table.push_back(ParamBounds {
         key: param_key_upgrade_delay(),
         min: constants::MIN_UPGRADE_DELAY_SECS,
@@ -132,7 +129,7 @@ fn validate_cross_parameter_constraints(
 ) -> Result<(), Error> {
     if param_key == &param_key_cooldown() {
         let secs = read_u64(new_value)?;
-        let staleness = storage::get_staleness_window_secs(env);
+        let staleness = storage::get_staleness_window(env);
         if secs > staleness {
             return Err(Error::InvalidCooldown);
         }
@@ -261,7 +258,7 @@ pub fn apply_parameter_change(
     }
     if param_key == &param_key_staleness_window() {
         let secs = read_u64(new_value)?;
-        storage::set_staleness_window_secs(env, secs);
+        storage::set_staleness_window(env, secs);
         return Ok(());
     }
     Err(Error::InvalidParameterKey)
@@ -299,7 +296,7 @@ pub fn get_current_parameter_value(env: &Env, param_key: &Symbol) -> Result<Byte
         return Ok(Bytes::from_array(env, &delay.to_be_bytes()));
     }
     if param_key == &param_key_staleness_window() {
-        let secs = storage::get_staleness_window_secs(env);
+        let secs = storage::get_staleness_window(env);
         return Ok(Bytes::from_array(env, &secs.to_be_bytes()));
     }
     Err(Error::InvalidParameterKey)
@@ -339,4 +336,19 @@ pub fn simulate_parameter_change(
     param_key: &Symbol,
     new_value: &Bytes,
     proposed_at: u64,
-    
+    time_lock_secs: u64,
+) -> Result<crate::types::ParameterSimulation, Error> {
+    validate_parameter_value(env, param_key, new_value)?;
+    let current_value = get_current_parameter_value(env, param_key)?;
+    let affected = get_affected_capabilities(env, param_key);
+    let exec_start = proposed_at.saturating_add(time_lock_secs);
+    let exec_end = proposed_at.saturating_add(time_lock_secs.saturating_mul(2));
+    Ok(crate::types::ParameterSimulation {
+        param_key: param_key.clone(),
+        current_value,
+        new_value: new_value.clone(),
+        affected_capabilities: affected,
+        execution_window_start: exec_start,
+        execution_window_end: exec_end,
+    })
+}

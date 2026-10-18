@@ -18,8 +18,8 @@
 //! root's module tree.
 
 use soroban_sdk::{
-    contractimpl, crypto::Hash, token, Address, Bytes, BytesN, Env, Symbol, SymbolStr,
-    TryFromVal, Vec,
+    contractimpl, crypto::Hash, token, Address, Bytes, BytesN, Env, Symbol, SymbolStr, TryFromVal,
+    Vec,
 };
 use subtle::ConstantTimeEq;
 
@@ -885,6 +885,14 @@ impl LedgerLensScoreContract {
         }
         events::gate_query_metered(&env, &consumer, fee);
 
-        Ok(Self::query_risk_gate_with_confidence(env, wallet, asset_pair, gate_threshold, 0))
+        Ok(Self::query_risk_gate_for_consumer(
+            env,
+            consumer,
+            wallet,
+            asset_pair,
+            gate_threshold,
+            0,
+            true,
+        ))
     }
 }

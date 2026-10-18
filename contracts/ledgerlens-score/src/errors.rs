@@ -190,4 +190,10 @@ impl Error {
     /// Returned by `set_fee_exemption` when `expires_at` is not in the
     /// future relative to the current ledger timestamp.
     pub const InvalidExemptionExpiry: Error = Error::InvalidTimestamp;
+
+    // ── Consumer score hooks (#1129) ────────────────────────────────────────
+    pub const ScoreHookLimitReached: Error = Error::ServiceSetFull;
+    pub const ScoreHookAlreadyRegistered: Error = Error::AlreadyInitialized;
+    pub const ScoreHookNotRegistered: Error = Error::ScoreNotFound;
+    pub const ScoreHookDispatchInProgress: Error = Error::ContractPaused;
 }

@@ -17,7 +17,7 @@
 
 use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
 
-use crate::types::{DataKey, DataKeyB, DataKeyC, DataKeyD, NamespacedKey};
+use crate::types::{DataKey, DataKeyB, DataKeyC, NamespacedKey};
 use crate::LedgerLensScoreContract;
 use std::string::String;
 

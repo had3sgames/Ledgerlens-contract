@@ -93,7 +93,7 @@ must authorize the call. The bucket stores one record per consumer: capacity,
 refill rate in tokens per second, available tokens, and the last-refill
 timestamp. Refill uses ledger time, saturates at capacity, and uses
 overflow-safe arithmetic. A missing quota is unmetered; an exhausted quota
-returns `false`. `get_consumer_read_quota_remaining` calculates the current
+returns `false`. `get_consumer_quota_remaining` calculates the current
 balance without changing storage, and admin-only `clear_consumer_read_quota`
 removes the record.
 

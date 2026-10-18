@@ -65,17 +65,17 @@ mod test_two_person_control;
 mod test_batch_ttl_optimization;
 
 #[cfg(test)]
-mod test_storage_contracts;
+mod test_gate_credits;
 #[cfg(test)]
-mod test_ttl_rent_manager;
+mod test_gate_fee_tiers;
 #[cfg(test)]
 mod test_keeper_rewards;
 #[cfg(test)]
 mod test_relay_attestation;
 #[cfg(test)]
-mod test_gate_credits;
+mod test_storage_contracts;
 #[cfg(test)]
-mod test_gate_fee_tiers;
+mod test_ttl_rent_manager;
 
 #[cfg(test)]
 mod test_invariants;
@@ -271,10 +271,7 @@ use subtle::ConstantTimeEq;
 // Build-verification metadata (SEP-55 convention) embedded in the WASM
 // `contractmetav0` custom section. Constant, so the build stays reproducible;
 // the commit is bound by the release attestation. See docs/build-verification.md.
-soroban_sdk::contractmeta!(
-    key = "source_repo",
-    val = "github:Ledger-Lenz/Ledgerlens-contract"
-);
+soroban_sdk::contractmeta!(key = "source_repo", val = "github:Ledger-Lenz/Ledgerlens-contract");
 
 pub use constants::CONFIG_DRIFT_MANIFEST_FIELDS;
 pub use errors::Error;
@@ -292,11 +289,11 @@ pub use types::{
     ModelVersionStatus, NormalizedSubmission, OperatorScoreExport, ParamChangeProposal, ParamValue,
     ParameterProposal, ParameterProposalRecord, ParameterProposalStatus, PendingConfigExportEntry,
     PendingScoreEntry, Policy, PolicyApproval, PolicyBundle, PolicyBundleProposal,
-    PublicScoreExport, RelayScoreAttestation, RiskScore, ScoreAttestation, ScoreAttestationInput,
-    ScoreDispute, ScoreFloorPolicy, ScoreHistogram, ScoreQuery, ScoreSubmission,
-    ScoreSubmissionWithProof, ScoreTrend, ScoreVelocityCap, SignerAccuracyRecord, SignerState,
-    SignerStateRecord, SubmissionProvenance, ThresholdAttestation, TierBounds, TokenBucket,
-    UpgradeProposal, WelfordCorrState,
+    PublicScoreExport, RelayScoreAttestation, RevokedKeyRecord, RiskScore, ScoreAttestation,
+    ScoreAttestationInput, ScoreChangeHook, ScoreDispute, ScoreFloorPolicy, ScoreHistogram,
+    ScoreQuery, ScoreSubmission, ScoreSubmissionWithProof, ScoreTrend, ScoreVelocityCap,
+    SignerAccuracyRecord, SignerState, SignerStateRecord, SubmissionProvenance,
+    ThresholdAttestation, TierBounds, TokenBucket, UpgradeProposal, WelfordCorrState,
 };
 /// The 32-byte all-zeros field element used as the value in non-membership proofs.
 pub use verkle::NON_MEMBER_SENTINEL;
@@ -898,8 +895,8 @@ impl LedgerLensScoreContract {
         }
         dispatcher.require_auth();
         let score_count = storage::get_score_count(&env, &wallet, &asset_pair);
-        let risk_score = storage::peek_score(&env, &wallet, &asset_pair)
-            .ok_or(Error::ScoreNotFound)?;
+        let risk_score =
+            storage::peek_score(&env, &wallet, &asset_pair).ok_or(Error::ScoreNotFound)?;
         let mut hooks = storage::get_score_change_hooks(&env);
         let threshold = storage::get_score_hook_failure_threshold(&env);
         let callback = Symbol::new(&env, "on_score_change");
@@ -923,7 +920,7 @@ impl LedgerLensScoreContract {
             let args = (wallet.clone(), asset_pair.clone(), risk_score.clone(), score_count)
                 .into_val(&env);
             let result = env.try_invoke_contract::<(), Error>(&hook.consumer, &callback, args);
-            if matches!(result, Ok(())) {
+            if matches!(result, Ok(Ok(()))) {
                 hook.consecutive_failures = 0;
             } else {
                 hook.consecutive_failures = hook.consecutive_failures.saturating_add(1);
@@ -939,7 +936,7 @@ impl LedgerLensScoreContract {
                 }
             }
             hook.last_dispatched_count = score_count;
-            hooks.set(i, &hook);
+            hooks.set(i, hook);
         }
         storage::set_score_change_hooks(&env, &hooks);
         storage::set_score_hook_dispatching(&env, false);
@@ -5119,27 +5116,6 @@ impl LedgerLensScoreContract {
         Self::query_risk_gate_with_confidence(env, wallet, asset_pair, gate_threshold, 0)
     }
 
-    /// Performs a risk-gate query against a governed per-consumer token bucket.
-    /// The consumer must authorize the call; quota exhaustion returns `false`.
-    pub fn query_risk_gate_metered(
-        env: Env,
-        consumer: Address,
-        wallet: Address,
-        asset_pair: Symbol,
-        gate_threshold: u32,
-    ) -> bool {
-        consumer.require_auth();
-        Self::query_risk_gate_for_consumer(
-            env,
-            consumer,
-            wallet,
-            asset_pair,
-            gate_threshold,
-            0,
-            true,
-        )
-    }
-
     /// Governs a per-consumer token bucket for risk-gate queries.
     /// `capacity` is the full bucket, `refill_rate` is tokens per second; once the
     /// configured bucket is exhausted, the query path fails closed until enough time
@@ -5189,7 +5165,7 @@ impl LedgerLensScoreContract {
 
     /// Returns the remaining tokens for a consumer quota without consuming
     /// anything. `0` means the quota is absent or exhausted.
-    pub fn get_consumer_read_quota_remaining(env: Env, consumer: Address) -> u32 {
+    pub fn get_consumer_quota_remaining(env: Env, consumer: Address) -> u32 {
         storage::remaining_consumer_read_quota(&env, &consumer)
     }
 
@@ -6683,18 +6659,13 @@ impl LedgerLensScoreContract {
 
     /// Returns a bounded pagination window over the revocation registry.
     /// `start` is zero-based and `limit` is capped to a sane maximum.
-    pub fn get_revoked_keys_paginated(
-        env: Env,
-        start: u32,
-        limit: u32,
-    ) -> Vec<RevokedKeyRecord> {
+    pub fn get_revoked_keys_paginated(env: Env, start: u32, limit: u32) -> Vec<RevokedKeyRecord> {
         let mut output = Vec::new(&env);
         let index = storage::get_revoked_key_index(&env);
         let cap = limit.min(32);
-        let start_idx = start as usize;
-        let end_idx = (start_idx + cap as usize).min(index.len());
-        for i in start_idx..end_idx {
-            let fingerprint = index.get(i as u32).unwrap();
+        let end_idx = start.saturating_add(cap).min(index.len());
+        for i in start..end_idx {
+            let fingerprint = index.get(i).unwrap();
             if let Some(record) = storage::get_revoked_key(&env, &fingerprint) {
                 output.push_back(record);
             }

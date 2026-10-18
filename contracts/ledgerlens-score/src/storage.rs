@@ -8,14 +8,15 @@ use crate::constants::{
 };
 use crate::errors::Error;
 use crate::types::{
-    AdaptiveRateLimit, AggregateRiskScore, AlertAckRecord, AlertType, DataKey, DataKeyB, DataKeyC,
-    DataKeyD, DataKeyF, DecayCurve, DeletionApprovalPolicy, EmbargoExpiry, FeeTier,
-    FlashProtectionMode, GateDataKey, HllSketch, InterpolationMethod, JumpStats,
+    AdaptiveRateLimit, AggregateRiskScore, AlertAckRecord, AlertType, ConsumerReadQuota, DataKey,
+    DataKeyB, DataKeyC, DataKeyD, DataKeyF, DecayCurve, DeletionApprovalPolicy, EmbargoExpiry,
+    FeeTier, FlashProtectionMode, GateDataKey, HllSketch, InterpolationMethod, JumpStats,
     ModelVersionStats, ModelVersionStatus, PairVolatilityState, ParamChangeProposal,
     ParameterProposalRecord, ParameterProposalStatus, PendingScoreEntry, Policy, PolicyApproval,
-    PolicyBundleProposal, RateLimitOverrideEntry, RiskScore, ScoreDispute, ScoreFloorPolicy,
-    ScoreHistogram, ScoreTrend, ScoreVelocityCap, SignerAccuracyRecord, SignerStateRecord,
-    SubscorePayload, TokenBucket, UpgradeProposal, WelfordCorrState,
+    PolicyBundleProposal, RateLimitOverrideEntry, RiskScore, ScoreChangeHook, ScoreDispute,
+    ScoreFloorPolicy, ScoreHistogram, ScoreHookDataKey, ScoreTrend, ScoreVelocityCap,
+    SignerAccuracyRecord, SignerStateRecord, SubscorePayload, TokenBucket, UpgradeProposal,
+    WelfordCorrState,
 };
 use soroban_sdk::{contracttype, Address, Bytes, BytesN, Env, Symbol, Vec};
 
@@ -3004,7 +3005,10 @@ pub fn set_revoked_key_index(env: &Env, index: &Vec<BytesN<32>>) {
     env.storage().instance().set(&DataKeyD::RevokedKeyIndex, index);
 }
 
-pub fn get_revoked_key(env: &Env, fingerprint: &BytesN<32>) -> Option<crate::types::RevokedKeyRecord> {
+pub fn get_revoked_key(
+    env: &Env,
+    fingerprint: &BytesN<32>,
+) -> Option<crate::types::RevokedKeyRecord> {
     env.storage().instance().get(&DataKeyD::RevokedKey(fingerprint.clone()))
 }
 
@@ -3154,9 +3158,8 @@ fn refilled_consumer_quota_tokens(quota: &ConsumerReadQuota, now: u64) -> u32 {
     }
     let elapsed = now.saturating_sub(quota.last_refill);
     let missing = quota.capacity.saturating_sub(quota.tokens);
-    let added = u128::from(elapsed)
-        .saturating_mul(u128::from(quota.refill_rate))
-        .min(u128::from(missing));
+    let added =
+        u128::from(elapsed).saturating_mul(u128::from(quota.refill_rate)).min(u128::from(missing));
     quota.tokens.saturating_add(added as u32).min(quota.capacity)
 }
 
@@ -3197,10 +3200,7 @@ pub fn get_accumulated_fees(env: &Env) -> i128 {
 }
 
 pub fn get_score_change_hooks(env: &Env) -> Vec<ScoreChangeHook> {
-    env.storage()
-        .instance()
-        .get(&ScoreHookDataKey::Registry)
-        .unwrap_or_else(|| Vec::new(env))
+    env.storage().instance().get(&ScoreHookDataKey::Registry).unwrap_or_else(|| Vec::new(env))
 }
 
 pub fn set_score_change_hooks(env: &Env, hooks: &Vec<ScoreChangeHook>) {
@@ -3732,13 +3732,13 @@ pub fn relay_tip_payable(env: &Env, tip: i128) -> i128 {
     }
     let window_len = get_relay_tip_window_ledgers(env);
     let now = env.ledger().sequence();
-    let (window_start, spent): (u32, i128) = env
-        .storage()
-        .instance()
-        .get(&DataKeyF::RelayTipWindowState)
-        .unwrap_or((now, 0));
-    let (window_start, spent) =
-        if now.saturating_sub(window_start) >= window_len { (now, 0) } else { (window_start, spent) };
+    let (window_start, spent): (u32, i128) =
+        env.storage().instance().get(&DataKeyF::RelayTipWindowState).unwrap_or((now, 0));
+    let (window_start, spent) = if now.saturating_sub(window_start) >= window_len {
+        (now, 0)
+    } else {
+        (window_start, spent)
+    };
     let headroom = cap.saturating_sub(spent).max(0);
     let payable = tip.min(pool).min(headroom);
     env.storage()
@@ -3897,8 +3897,11 @@ pub fn advance_consumer_volume_window(env: &Env, consumer: &Address) -> u32 {
     let now = env.ledger().sequence();
     let (window_start, count): (u32, u32) =
         env.storage().persistent().get(&key).unwrap_or((now, 0));
-    let (window_start, count) =
-        if now.saturating_sub(window_start) >= window_len { (now, 0) } else { (window_start, count) };
+    let (window_start, count) = if now.saturating_sub(window_start) >= window_len {
+        (now, 0)
+    } else {
+        (window_start, count)
+    };
     env.storage().persistent().set(&key, &(window_start, count.saturating_add(1)));
     env.storage().persistent().extend_ttl(&key, SCORE_TTL_THRESHOLD, SCORE_TTL_EXTEND_TO);
     count

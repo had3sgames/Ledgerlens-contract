@@ -618,6 +618,21 @@ pub enum ScoreHookDataKey {
     Dispatching,
 }
 
+/// A storage key scoped to a provider namespace (issue #1134). Namespace `0`
+/// is distinct from the legacy un-namespaced keys.
+#[contracttype]
+#[derive(Clone)]
+pub struct NamespacedKey {
+    pub namespace: u32,
+    pub key: DataKey,
+}
+
+impl NamespacedKey {
+    pub fn new(namespace: u32, key: DataKey) -> Self {
+        Self { namespace, key }
+    }
+}
+
 /// Privacy-preserving export view modes for score data.
 /// Defines what fields are exposed based on the consumer's role.
 #[contracttype]
